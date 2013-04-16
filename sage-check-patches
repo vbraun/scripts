@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+import urllib
+
+assert len(sys.argv) == 2
+
+ticket=sys.argv[1]
+print 'Checking issue http://trac.sagemath.org/sage_trac/ticket/'+ticket
+
+hg_root = subprocess.check_output('hg root', shell=True).strip()
+patch_dir = os.path.join(hg_root, '.hg', 'patches')
+
+patches = [ p for p in os.listdir(patch_dir) if p.find(ticket)>0 ]
+
+
+def strip_header(lines):
+    lines = [l.strip() for l in lines ]
+    while lines[0].startswith('#'):
+        lines.pop(0)
+    pos = 0
+    while True:
+        while lines[pos].isspace() or lines[pos]=='':
+            lines.pop(pos)
+        if lines[pos].startswith('diff'):
+            break
+        else:
+            pos += 1
+    return lines
+    
+
+debug=True
+
+def diff(a, b):
+    if len(a)!=len(b):
+        if debug: print 'Diff is not equal because length differs'
+        return False
+    for i in range(len(a)):
+        if a[i]==b[i]: continue
+        if debug: print 'Difference on line '+str(i)+': '+a[i]+' vs. '+b[i]
+        return False
+    return True
+
+
+trac = dict()
+for patch in patches:
+    url = 'http://trac.sagemath.org/sage_trac/raw-attachment/ticket/'+ticket+'/'+patch
+    # url = urllib.urlopen(url)
+    # patch_lines = url.readlines()
+    try:
+        patch_lines = subprocess.check_output('wget --no-cache --quiet -O - '+url, shell=True).splitlines()
+        trac[patch] = strip_header(patch_lines)
+    except subprocess.CalledProcessError:
+        pass
+
+
+
+actual = dict()
+for patch in patches:
+    filename = os.path.join(patch_dir, patch)
+    with open(filename, 'r') as f:
+        patch_lines = f.readlines()
+    actual[patch] = strip_header(patch_lines)
+
+
+
+patchbot = []
+patchbot_html = urllib.urlopen('http://patchbot.sagemath.org/ticket/'+ticket).readlines()
+line = patchbot_html.pop(0)
+while len(patchbot_html)>0  and  not line.startswith("<td align='right'>patches:</td>"):
+    line = patchbot_html.pop(0)
+line = patchbot_html.pop(0)
+assert line.startswith('<td><ol><li>')
+line = patchbot_html.pop(0)
+while len(patchbot_html)>0  and  not line.startswith('</tr>'):
+    line = line.split('http://trac.sagemath.org/sage_trac/attachment/ticket/'+ticket+'/')[1]
+    line = line.split('#')[0]
+    patchbot.append(line)
+    line = patchbot_html.pop(0)
+
+
+for patch in patches:
+    try: 
+        diff_equal = diff(trac[patch], actual[patch])
+    except KeyError:
+        print '[missing]\t'+patch
+        continue
+    if diff_equal:
+        print '[OK]\t'+patch
+    else:
+        print '[Out of date]\t'+patch
+
+local = set(actual.keys())
+remote = set(patchbot)
+only_local = local.difference(remote)
+only_remote = remote.difference(local)
+if len(only_local)>0:
+    print '\nPatches only in the local repository: '+ ', '.join(only_local)
+if len(only_remote)>0:
+    print '\nPatches only in the trac patchbot: '+ ', '.join(only_remote)

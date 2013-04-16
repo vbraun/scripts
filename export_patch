@@ -1,0 +1,7 @@
+#!/bin/sh
+
+PATCH=`hg qtop`
+echo "Exporting $PATCH"
+
+hg export tip > ~/Sage/patches/$PATCH
+

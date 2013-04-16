@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+export SAGE_PARALLEL_SPKG_BUILD=yes
+export SAGE_ATLAS_ARCH=Corei7,SSE3,SSE2,SSE1
+export SAGE_ATLAS_LIB=/usr/lib64/atlas
+export MAKE='make -j10'
+
+make
